@@ -1,0 +1,50 @@
+name: Build Instagram Story Videos
+
+on:
+  push:
+    paths:
+      - ".github/workflows/story-videos.yml"
+      - "posts/*.jpg"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Render vertical Stories
+        run: |
+          mkdir -p stories/video
+          render_story() {
+            file="$1"
+            title="$2"
+            subtitle="$3"
+            out="stories/video/${file%.jpg}.mp4"
+            ffmpeg -y -loop 1 -i "posts/$file" \
+              -f lavfi -i "sine=frequency=85:duration=8" \
+              -f lavfi -i "sine=frequency=1200:duration=0.45" \
+              -filter_complex "[0:v]scale=1200:2134:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0008,1.06)':d=200:s=1080x1920:fps=25,drawbox=x=0:y=0:w=iw:h=ih:color=black@0.24:t=fill,drawtext=text='$title':fontcolor=white:fontsize=76:borderw=4:bordercolor=black@0.65:x=(w-text_w)/2:y=h*0.72,drawtext=text='$subtitle':fontcolor=white:fontsize=38:borderw=3:bordercolor=black@0.65:x=(w-text_w)/2:y=h*0.80[v];[1:a]volume=0.12,afade=t=out:st=7:d=1[thump];[2:a]volume=0.20,afade=t=in:st=0:d=0.04,afade=t=out:st=0.35:d=0.1,adelay=900|900[whistle];[thump][whistle]amix=inputs=2:duration=longest,afade=t=out:st=7:d=1[a]" \
+              -map "[v]" -map "[a]" -t 8 -r 25 -c:v libx264 -pix_fmt yuv420p -preset veryfast -crf 23 -c:a aac -b:a 128k -movflags +faststart "$out"
+          }
+          render_story "01_home_kit.jpg" "HOME KIT" "MADE FOR THE FANS"
+          render_story "03_away_kit.jpg" "AWAY KIT" "SAME PASSION. ANYWHERE."
+          render_story "05_third_kit.jpg" "THIRD KIT" "STAND OUT ON MATCH DAY"
+          render_story "02_size_guide.jpg" "FIND YOUR FIT" "CHECK THE SIZE GUIDE"
+          render_story "04_how_to_order.jpg" "ORDER IN 3 STEPS" "DM US TO GET STARTED"
+          render_story "06_custom_kit.jpg" "MAKE IT YOURS" "YOUR NAME. YOUR NUMBER."
+      - name: Commit rendered videos
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stories/video/*.mp4
+          if ! git diff --cached --quiet; then
+            git commit -m "Add animated Instagram Story videos"
+            git push
+          fi
